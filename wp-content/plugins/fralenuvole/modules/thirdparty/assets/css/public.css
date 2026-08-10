@@ -1,0 +1,59 @@
+/**
+ * Fralenuvole
+ * thirdparty - public.css - Public Third-party CSS Styles
+ */
+
+.frl-form-main div:is(.frl-form-select-parent, .frl-form-select-child):has(select[multiple]){
+    margin-top: 10px;
+}
+
+.frl-form-main div:is(.frl-form-select-parent, .frl-form-select-child):has(select[multiple]) label {
+    font-weight: 500;
+    font-size: 1.1em;
+    line-height: 1.2;
+}
+.frl-form-main div:is(.frl-form-select-parent, .frl-form-select-child) select[multiple] {
+    min-height: 132px;
+}
+.frl-form-main.wsf-form:not(.wsf-label-position-inside-hide) .wsf-label-position-inside input.wsf-field[placeholder]:focus+label {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+}
+
+.frl-form-select-child {
+    height: 0;
+    margin-bottom: 0 !important;
+    overflow: hidden;
+    opacity: 0;
+    transition: all ease 0.3s;
+}
+
+.frl-form-select-parent.frl-parent-contact-method:has(select option:last-child:checked)~.frl-form-select-child.frl-child-other {
+    height: 81px;
+    overflow: visible;
+    opacity: 1;
+    margin-bottom: var(--wsf-form-grid-gap) !important;
+}
+
+.frl-form-select-parent.frl-parent-contact-method:has(select option:nth-last-child(2):checked)~.frl-form-select-child.frl-child-telegram {
+    height: 48px;
+    overflow: visible;
+    opacity: 1;
+    margin-bottom: var(--wsf-form-grid-gap) !important;
+}
+
+.frl-form-select-parent.frl-parent-countries:has(select option:checked)~.frl-form-select-child.frl-child-countries{
+    height: 110px;
+    overflow: visible;
+    opacity: 1;
+    margin-bottom: var(--wsf-form-grid-gap) !important;
+}
+
+.frl-form-select-parent.frl-parent-countries:has(select option:checked)~.frl-form-select-child.frl-child-countries select{
+    min-height: 110px;
+    height: 110px;
+}
+
+.gspbcssvisibilitycontent {
+    display: flex;
+}
