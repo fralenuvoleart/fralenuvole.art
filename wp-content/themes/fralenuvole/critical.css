@@ -1,0 +1,15 @@
+@media(max-width:599.98px) {
+    .hero-home {
+        min-height: unset !important;
+        aspect-ratio: 16/9 !important;
+        text-align: center;
+        padding-top: unset;
+    }
+    .hero-home .wp-block-cover__image-background.has-parallax {
+        background-size: auto 67vh !important;
+        background-position: right top !important;
+
+    }
+
+}
+
