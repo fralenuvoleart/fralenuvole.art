@@ -15,3 +15,18 @@ Text Domain: fralenuvole
 Tags: 
 */
 
+.wp-block-post-terms a {
+    background-color: var(--wp--preset--color--accent-5);
+    text-decoration: none !important;
+    margin-right: 0.75em;
+    opacity: 0.72;
+}
+.wp-block-post-terms a:hover {
+    opacity: 1;
+}
+
+.wp-block-post-terms.is-style-post-terms-1 .wp-block-post-terms__separator{
+    display: none;
+}
+
+
