@@ -296,7 +296,7 @@ function frl_wsf_init_stats() {
  *   // [
  *   //   'raw'         => 'Call me at (415) 555-2671 ext. 23',
  *   //   'clean'       => '4155552671',
- *   //   'extension'   => '23',
+ *   //   'code'        => null,
  *   //   'digit_count' => 10,
  *   //   'valid'       => true,
  *   // ]
@@ -307,19 +307,17 @@ function frl_wsf_init_stats() {
  *
  * @param string|null $raw                Raw user input.
  * @param bool        $convert_vanity_letters Convert letters to keypad digits (1-800-FLOWERS -> 18003569377) instead of just dropping them.
- * @param string|null $default_country_code  Country calling code (no '+') to prepend when the input is a bare national number — i.e. no'+' and no detected 00/011 international prefix. Defaults to Georgia (995). Pass null to disable and get a bare national number back instead.
- * @return array{raw: mixed, clean: string, extension: ?string, digit_count: int, valid: bool}
+ * @return array{raw: mixed, clean: string, code: ?string, digit_count: int, valid: bool}
  */
 function frl_wsf_sanitize_phone_number(
 	?string $raw,
-	bool $convert_vanity_letters = false,
-	?string $default_country_code = PHONE_DEFAULT_COUNTRY_CODE
+	bool $convert_vanity_letters = false
 ): array {
 	if ( $raw === null || trim( $raw ) === '' ) {
 		return array(
 			'raw'         => $raw,
 			'clean'       => '',
-			'extension'   => null,
+			'code'        => null,
 			'digit_count' => 0,
 			'valid'       => false,
 		);
@@ -327,14 +325,9 @@ function frl_wsf_sanitize_phone_number(
 
 	$text = trim( frl_wsf_phone_normalize_unicode( $raw ) );
 
-	// Pull off a trailing extension before anything else touches the
-	// string, since the extension's own digits must not get merged into
-	// the main number.
-	$extension = null;
-	if ( preg_match( PHONE_EXTENSION_PATTERN, $text, $m, PREG_OFFSET_CAPTURE ) ) {
-		$extension = $m[1][0];
-		$text      = substr( $text, 0, $m[0][1] );
-	}
+	// Strip trailing extension markers before processing — their digits
+	// must not get merged into the main number.
+	$text = preg_replace( PHONE_EXTENSION_PATTERN, '', $text );
 
 	if ( $convert_vanity_letters ) {
 		$text = frl_wsf_phone_convert_vanity_letters( $text );
@@ -369,42 +362,47 @@ function frl_wsf_sanitize_phone_number(
 		$leading_plus = true;
 	}
 
-	// No '+' and no international prefix was found — treat this as a bare
-	// national number and prepend the default country code.
-	if ( ! $leading_plus && $digits !== '' && $default_country_code !== null ) {
-		// Strip a single leading trunk zero, a common convention
-		// (e.g. "0555 12 34 56" -> "555 12 34 56").
-		$without_trunk = ( strncmp( $digits, '0', 1 ) === 0 )
-			? substr( $digits, 1 )
-			: $digits;
+	$code = null;
+	// True when a country prefix was recognised but its national part
+	// failed the country pattern — the number must be marked invalid.
+	$recognised_invalid = false;
 
-		// Avoid double-prefixing if the caller already typed the country
-		// code digits without a leading '+' (e.g. "995555123456") — but
-		// only when what's left after the code still looks like a full
-		// national number (>= 7 digits). Otherwise a local number that
-		// merely happens to start with the same digits as the country
-		// code (e.g. Georgian "099 512 3456") would get miscounted as
-		// "already coded" and come out too short.
-		$code_len         = strlen( $default_country_code );
-		$already_has_code = strncmp( $without_trunk, $default_country_code, $code_len ) === 0;
-		if ( $already_has_code && strlen( $without_trunk ) >= $code_len + 7 ) {
-			$digits = $without_trunk;
-		} else {
-			$digits = $default_country_code . $without_trunk;
+	// No '+' and no international prefix — try to detect the country.
+	if ( ! $leading_plus ) {
+		$result = frl_wsf_maybe_prepend_country_code( $digits );
+		if ( $result['prepended'] ) {
+			$digits       = $result['digits'];
+			$leading_plus = true;
+		} elseif ( $result['code'] !== null ) {
+			$recognised_invalid = true;
 		}
-		$leading_plus = true;
+		$code = $result['code'];
+	}
+
+	// For explicit international numbers, extract the country code from
+	// the leading digits so the caller knows which country was identified.
+	if ( $code === null && $leading_plus ) {
+		foreach ( PHONE_COUNTRY_CONFIGS as $config ) {
+			$code_len = strlen( $config['code'] );
+			if ( strncmp( $digits, $config['code'], $code_len ) === 0 ) {
+				$code = $config['code'];
+				break;
+			}
+		}
 	}
 
 	$clean       = $leading_plus ? ( '+' . $digits ) : $digits;
 	$digit_count = strlen( $digits );
 
 	// E.164 allows 7-15 digits and the first digit can't be 0.
-	$valid = (bool) preg_match( '/^\+?[1-9]\d{6,14}$/', $clean );
+	$valid = $recognised_invalid
+		? false
+		: (bool) preg_match( '/^\+?[1-9]\d{6,14}$/', $clean );
 
 	return array(
 		'raw'         => $raw,
 		'clean'       => $clean,
-		'extension'   => $extension,
+		'code'        => $code,
 		'digit_count' => $digit_count,
 		'valid'       => $valid,
 	);
@@ -465,6 +463,120 @@ function frl_wsf_phone_convert_vanity_letters( string $text ): string {
 }
 
 /**
+ * Prepend a country calling code to a bare national number.
+ *
+ * Two-pass detection over PHONE_COUNTRY_CONFIGS (ordered, first-match-wins):
+ *   1. Bare national numbers (e.g. "599654454" → "+995599654454").
+ *   2. Bare international numbers where the country code is already
+ *      present without '+' (e.g. "995599654454" → "+995599654454").
+ *
+ * Strips a leading trunk zero and guards against double-prefixing.
+ *
+ * @param string $digits Digit-only string (no '+', no formatting).
+ * @return array{digits: string, prepended: bool, code: ?string}
+ */
+function frl_wsf_maybe_prepend_country_code( string $digits ): array {
+	if ( $digits === '' ) {
+		return array(
+			'digits'    => $digits,
+			'prepended' => false,
+			'code'      => null,
+		);
+	}
+
+	// Pass 1: match bare national numbers against country patterns.
+	// Skip prefix-only entries (pattern = null).
+	foreach ( PHONE_COUNTRY_CONFIGS as $config ) {
+		if ( $config['pattern'] === null || ! preg_match( $config['pattern'], $digits ) ) {
+			continue;
+		}
+
+		$country_code = $config['code'];
+
+		// Strip a single leading trunk zero (e.g. "0555 12 34 56" -> "555 12 34 56").
+		$without_trunk = ( strncmp( $digits, '0', 1 ) === 0 )
+			? substr( $digits, 1 )
+			: $digits;
+
+		// Avoid double-prefixing when the caller already typed the country
+		// code without '+' (e.g. "995555123456"), but only when what's left
+		// still looks like a full national number (>= 7 digits).
+		$code_len         = strlen( $country_code );
+		$already_has_code = strncmp( $without_trunk, $country_code, $code_len ) === 0;
+		$digits           = ( $already_has_code && strlen( $without_trunk ) >= $code_len + 7 )
+			? $without_trunk
+			: $country_code . $without_trunk;
+
+		return array(
+			'digits'    => $digits,
+			'prepended' => true,
+			'code'      => $country_code,
+		);
+	}
+
+	// Pass 2: detect bare international numbers where the country code
+	// is already present without a leading '+' (e.g. "995599654454").
+	foreach ( PHONE_COUNTRY_CONFIGS as $config ) {
+		$code     = $config['code'];
+		$code_len = strlen( $code );
+
+		if ( strncmp( $digits, $code, $code_len ) !== 0 ) {
+			continue;
+		}
+
+		$national_part = substr( $digits, $code_len );
+
+		// Prefix-only entry (pattern = null): accept if the national
+		// part meets the minimum length guard.
+		if ( $config['pattern'] === null ) {
+			$without_trunk = ( strncmp( $national_part, '0', 1 ) === 0 )
+				? substr( $national_part, 1 )
+				: $national_part;
+
+			if ( strlen( $without_trunk ) < PHONE_MIN_NATIONAL_DIGITS ) {
+				return array(
+					'digits'    => $digits,
+					'prepended' => false,
+					'code'      => $code,
+				);
+			}
+
+			return array(
+				'digits'    => $code . $without_trunk,
+				'prepended' => true,
+				'code'      => $code,
+			);
+		}
+
+		// Prefix recognised but national part is malformed — report the
+		// country code so the caller can flag it invalid.
+		if ( ! preg_match( $config['pattern'], $national_part ) ) {
+			return array(
+				'digits'    => $digits,
+				'prepended' => false,
+				'code'      => $code,
+			);
+		}
+
+		$without_trunk = ( strncmp( $national_part, '0', 1 ) === 0 )
+			? substr( $national_part, 1 )
+			: $national_part;
+
+		return array(
+			'digits'    => $code . $without_trunk,
+			'prepended' => true,
+			'code'      => $code,
+		);
+	}
+
+	return array(
+		'digits'    => $digits,
+		'prepended' => false,
+		'code'      => null,
+	);
+}
+
+/**
  * Sanitise a list of raw strings.
  *
  * @param array<int, string|null> $raw_list
@@ -472,11 +584,10 @@ function frl_wsf_phone_convert_vanity_letters( string $text ): string {
  */
 function frl_wsf_sanitize_phone_numbers_batch(
 	array $raw_list,
-	bool $convert_vanity_letters = false,
-	?string $default_country_code = PHONE_DEFAULT_COUNTRY_CODE
+	bool $convert_vanity_letters = false
 ): array {
 	return array_map(
-		fn( $raw ) => frl_wsf_sanitize_phone_number( $raw, $convert_vanity_letters, $default_country_code ),
+		fn( $raw ) => frl_wsf_sanitize_phone_number( $raw, $convert_vanity_letters ),
 		$raw_list
 	);
 }
@@ -488,10 +599,7 @@ function frl_wsf_sanitize_phone_numbers_batch(
  *
  * @return array<int, array>
  */
-function frl_wsf_split_multiple_phone_numbers(
-	string $raw,
-	?string $default_country_code = PHONE_DEFAULT_COUNTRY_CODE
-): array {
+function frl_wsf_split_multiple_phone_numbers( string $raw ): array {
 	// Splits on '/', ';', '|', "or", "and", and commas — except a comma
 	// immediately followed by an extension marker (", ext. 23", ", x23"),
 	// which is one number, not two.
@@ -499,7 +607,7 @@ function frl_wsf_split_multiple_phone_numbers(
 	$parts   = preg_split( $pattern, $raw );
 	$parts   = array_filter( $parts, fn( $p ) => trim( $p ) !== '' );
 	return array_map(
-		fn( $p ) => frl_wsf_sanitize_phone_number( $p, false, $default_country_code ),
+		fn( $p ) => frl_wsf_sanitize_phone_number( $p, false ),
 		$parts
 	);
 }
