@@ -43,7 +43,7 @@ figure picture {
 
 :root:not(.has-modal-open) .frl-header {
     position: sticky;
-    top: calc(var(--wp-admin--admin-bar--height, 0) - var(--frl-header-shift));
+    top: calc(var(--wp-admin--admin-bar--height, 0px) - var(--frl-header-shift));
     z-index: 100;
 }
 
