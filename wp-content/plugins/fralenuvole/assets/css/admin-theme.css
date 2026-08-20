@@ -50,7 +50,7 @@ body a {
     height: 32px;
 }
 
-#wpadminbar #wp-admin-bar-site-name>.ab-item .site-icon {
+:root #wpadminbar #wp-admin-bar-site-name>.ab-item .site-icon {
     border-radius: 999px;
 }
 
