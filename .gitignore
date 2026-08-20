@@ -3,3 +3,11 @@
 /logs/
 /phpcs.xml
 /.roo*
+
+# Ignore all content inside the theme directory
+wp-content/themes/fralenuvole/*
+# Except specific files
+!wp-content/themes/fralenuvole/critical.css
+!wp-content/themes/fralenuvole/style.css
+!wp-content/themes/fralenuvole/functions.php
+

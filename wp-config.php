@@ -81,7 +81,8 @@ define( 'WP_REDIS_CONFIG', [
    'save_commands' => false,
    'prefix' => "uzeufpffvc:",  
    'non_prefetchable_groups' => [
-           'frl_cache_admin', // wildcard are supported
+        'frl_cache_admin', // wildcard are supported
+        'transient',
    ],
 ] );
 define( 'WP_REDIS_DISABLED', false );

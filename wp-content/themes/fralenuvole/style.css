@@ -1,7 +1,7 @@
 /*
 Theme Name: Fralenuvole
 Theme URI: 
-Author: Francesco Castronovo
+Author: 
 Author URI: 
 Description: 
 Requires at least: 7.0
@@ -10,23 +10,8 @@ Requires PHP: 5.7
 Version: 
 License: GNU General Public License v2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-Template: twentytwentyfive
+Template: greenshift
 Text Domain: fralenuvole
 Tags: 
 */
-
-.wp-block-post-terms a {
-    background-color: var(--wp--preset--color--accent-5);
-    text-decoration: none !important;
-    margin-right: 0.75em;
-    opacity: 0.72;
-}
-.wp-block-post-terms a:hover {
-    opacity: 1;
-}
-
-.wp-block-post-terms.is-style-post-terms-1 .wp-block-post-terms__separator{
-    display: none;
-}
-
 

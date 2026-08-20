@@ -1,6 +1,6 @@
 == Fralenuvole ==
 
-Contributors: Francesco Castronovo
+Contributors: 
 Requires at least: 7.0
 Tested up to: 7.0
 Requires PHP: 5.7
@@ -16,7 +16,7 @@ License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
 == Copyright ==
 
-Fralenuvole WordPress Theme, (C) 2026 Francesco Castronovo
+Fralenuvole WordPress Theme, (C) 2026 
 Fralenuvole is distributed under the terms of the GNU GPL.
 
 This program is free software: you can redistribute it and/or modify
@@ -30,5 +30,5 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
 
 
-Fralenuvole is a child theme of Twenty Twenty-Five (https://wordpress.org/themes/twentytwentyfive/), (C) the WordPress team, [GPLv2 or later](http://www.gnu.org/licenses/gpl-2.0.html)
+Fralenuvole is a child theme of Greenshift (https://theme.greenshiftwp.com/), (C) Wpsoul, [GPLv2 or later](http://www.gnu.org/licenses/gpl-2.0.html)
 
