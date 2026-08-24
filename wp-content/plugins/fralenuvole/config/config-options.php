@@ -323,7 +323,7 @@ const FRL_DEFAULT_FIELDS = array(
 			),
 			'image_sizes'                         => array(
 				'label'             => 'Add Media Image Sizes',
-				'description'       => 'Add custom image sizes to media library',
+				'description'       => 'Add custom image sizes to post edit screen',
 				'type'              => 'checkbox',
 				'default'           => 0,
 				'sanitize_callback' => 'absint',
@@ -720,13 +720,6 @@ const FRL_DEFAULT_FIELDS = array(
 				'default'           => 1,
 				'sanitize_callback' => 'absint',
 				'autoload'          => 'no',
-			),
-			'dash_widget_user_visits'              => array(
-				'label'       => 'Logged users Widget',
-				'description' => 'Show recent user activity on the dashboard',
-				'type'        => 'checkbox',
-				'default'     => '1',
-				'autoload'    => 'no',
 			),
 			'remove_dash_widg'                     => array(
 				'label'             => 'Remove dashboard widgets',
