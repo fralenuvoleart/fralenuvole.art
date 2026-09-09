@@ -1,225 +1,67 @@
 /**
- * Fralenuvole – ultra-light scroll state classes on <html>
- * Classes:
- *  - frl-is-top
- *  - frl-is-scroll
- *  - frl-is-scroll-up
- *  - frl-is-scroll-down
- *  - frl-has-hero
+ * Fralenuvole – public.js
  *
- * Performance:
- *  - Passive scroll listener enqueues a single rAF per frame
- *  - Reads scrollTop once; writes classList only on state change
+ * Patches WordPress core navigation submenu aria-expanded on mobile.
+ *
+ * Core's Interactivity API (data-wp-bind--aria-expanded) has two bugs:
+ * 1. Hamburger-open sets aria-expanded="true" on ALL toggles, even hidden ones.
+ * 2. Clicking a toggle does not flip aria-expanded at all.
+ *
+ * A MutationObserver corrects case 1 by reverting false positives (submenu
+ * hidden but aria-expanded="true"). A delegated click handler handles case 2
+ * by directly flipping the attribute. Only one submenu is open at a time
+ * (accordion behaviour).
  */
+
 (() => {
-	const root = document.documentElement;
-	const scroller = document.scrollingElement || root;
+	let skipObserver = false;
 
-	// Configurable selectors
-	const SEL_HEADER = 'header.site-header';
-	const SEL_HERO = '#hero';
+	const observer = new MutationObserver((mutations) => {
+		if (skipObserver) { skipObserver = false; return; }
 
-	let lastY = scroller.scrollTop || 0;
-	let ticking = false;
-	let dir = 0; // -1 up, 1 down, 0 neutral
-	const THRESH = 2;
-	let scrollActiveTid = 0;
-	const STOP_DELAY = 100; // ms – balanced; 120–160ms works well
+		for (const mutation of mutations) {
+			const toggle = mutation.target;
+			if (!toggle.matches('.wp-block-navigation-submenu__toggle')) continue;
+			if (toggle.getAttribute('aria-expanded') !== 'true') continue;
 
-	// Track last applied states to skip DOM reads entirely
-	let prevTop = null;
-	let prevDown = null;
-	let prevUp = null;
-	let prevScroll = null;
+			const submenu = toggle.nextElementSibling;
+			if (!submenu) continue;
 
-	function normalizeWhitespaceOnce() {
-		const cls = root.className;
-		const norm = cls.replace(/\s+/g, ' ').trim();
-		if (norm !== cls) root.className = norm;
-	}
-	// Normalize whenever any script changes html.class (evented, batched via rAF)
-	let classNormScheduled = false;
-	function scheduleNormalize() {
-		if (classNormScheduled) return;
-		classNormScheduled = true;
-		requestAnimationFrame(() => {
-			classNormScheduled = false;
-			normalizeWhitespaceOnce();
+			const isOpen =
+				submenu.classList.contains('wp-block-navigation-submenu__visible') ||
+				submenu.getAttribute('aria-hidden') === 'false';
+
+			if (!isOpen) {
+				toggle.setAttribute('aria-expanded', 'false');
+			}
+		}
+	});
+
+	observer.observe(document.body, {
+		attributes: true,
+		attributeFilter: ['aria-expanded'],
+		subtree: true,
+	});
+
+	// Click handler: directly flips aria-expanded on the clicked toggle.
+	// Core does not modify the DOM at all on mobile toggle clicks (the
+	// Interactivity API binding is broken), so there is nothing to defer
+	// for — we flip the attribute ourselves. skipObserver prevents the
+	// MutationObserver from reverting our writes.
+	document.addEventListener('click', (e) => {
+		const toggle = e.target.closest('.wp-block-navigation-submenu__toggle');
+		if (!toggle) return;
+
+		const current = toggle.getAttribute('aria-expanded') === 'true';
+		skipObserver = true;
+
+		// Close all other open toggles — only touch those already "true"
+		document.querySelectorAll('.wp-block-navigation-submenu__toggle[aria-expanded="true"]').forEach((t) => {
+			if (t !== toggle) {
+				t.setAttribute('aria-expanded', 'false');
+			}
 		});
-	}
-	(new MutationObserver((mutations) => {
-		for (let i = 0; i < mutations.length; i++) {
-			if (mutations[i].attributeName === 'class') {
-				scheduleNormalize();
-				break;
-			}
-		}
-	})).observe(root, { attributes: true, attributeFilter: ['class'] });
 
-	function apply() {
-		const y = scroller.scrollTop || 0;
-		const delta = y - lastY;
-
-		// Direction detection with hysteresis
-		let nextDir = dir;
-		if (Math.abs(delta) > THRESH) {
-			nextDir = delta > 0 ? 1 : -1;
-		}
-
-		// Top handling: clear direction at absolute top
-		if (y === 0) {
-			nextDir = 0;
-		}
-
-		// Update classes only on change. Every classList.toggle() below already
-		// triggers the MutationObserver (line ~50), which schedules a single
-		// rAF-batched normalizeWhitespaceOnce() call — no separate normalize
-		// call is needed here, it would just duplicate that work.
-		if (nextDir !== dir) {
-			dir = nextDir;
-			const isDown = dir === 1;
-			const isUp = dir === -1;
-			if (prevDown !== isDown) {
-				root.classList.toggle('frl-is-scroll-down', isDown);
-				prevDown = isDown;
-			}
-			if (prevUp !== isUp) {
-				root.classList.toggle('frl-is-scroll-up', isUp);
-				prevUp = isUp;
-			}
-		}
-
-		// Positional classes
-		const isTop = y === 0;
-		if (prevTop !== isTop) {
-			root.classList.toggle('frl-is-top', isTop);
-			prevTop = isTop;
-		}
-
-		lastY = y;
-		ticking = false;
-	}
-
-	// Initial state
-	(() => {
-		// Initialize prev state before first apply to avoid extra DOM writes
-		prevTop = null;
-		prevDown = null;
-		prevUp = null;
-		prevScroll = null;
-		apply();
-		// Ensure scroll flag starts as false
-		const isScroll = false;
-		root.classList.toggle('frl-is-scroll', isScroll);
-		prevScroll = isScroll;
-		// MutationObserver handles normalization for the toggle above.
-	})();
-
-	// ---- DOM-dependent initializations (hero presence, header height var) ----
-	let headerEl = null;
-	let headerRO = null;
-	let headerRaf = 0;
-
-	function setHeaderVarNow() {
-		if (!headerEl) return;
-		const h = headerEl.offsetHeight || 0;
-		root.style.setProperty('--frl-header-height', h + 'px');
-	}
-	function scheduleHeaderVar() {
-		if (headerRaf) return;
-		headerRaf = requestAnimationFrame(() => {
-			headerRaf = 0;
-			setHeaderVarNow();
-		});
-	}
-	function initHeaderVarTracking() {
-		headerEl = document.querySelector(SEL_HEADER);
-		if (!headerEl) return;
-		// Initial set
-		setHeaderVarNow();
-		// Observe size changes efficiently
-		if ('ResizeObserver' in window) {
-			headerRO = new ResizeObserver(() => {
-				scheduleHeaderVar();
-			});
-			headerRO.observe(headerEl);
-		} else {
-			// Fallback: debounced resize
-			let rid = 0;
-			window.addEventListener('resize', () => {
-				if (rid) clearTimeout(rid);
-				rid = setTimeout(setHeaderVarNow, 140);
-			});
-		}
-		// Late reflow (fonts, images)
-		window.addEventListener('load', scheduleHeaderVar, { once: true });
-	}
-
-	function initDomDependent() {
-		// Mark presence of hero
-		const hasHero = !!document.querySelector(SEL_HERO);
-		if (hasHero) {
-			root.classList.add('frl-has-hero');
-			// MutationObserver handles normalization for the add() above.
-		}
-		// Track header height CSS var
-		initHeaderVarTracking();
-	}
-	if (document.readyState === 'loading') {
-		document.addEventListener('DOMContentLoaded', initDomDependent, { once: true });
-	} else {
-		initDomDependent();
-	}
-
-	// Passive listener – enqueue rAF work only
-	window.addEventListener('scroll', () => {
-		// Mark actively scrolling (transient) without DOM reads.
-		// Every classList mutation below is caught by the MutationObserver
-		// (line ~50), which schedules a single rAF-batched normalization —
-		// no need to call normalizeWhitespaceOnce()/scheduleNormalize() here too.
-		if (prevScroll !== true) {
-			root.classList.add('frl-is-scroll');
-			prevScroll = true;
-		}
-
-		// Instant frl-is-top when reaching absolute top (no lag)
-		const yNow = scroller.scrollTop || 0;
-		if (yNow === 0 && prevTop !== true) {
-			root.classList.add('frl-is-top');
-			prevTop = true;
-			// Also clear direction and scrolling immediately to prevent visual lag
-			if (prevDown) {
-				root.classList.remove('frl-is-scroll-down');
-				prevDown = false;
-			}
-			if (prevUp) {
-				root.classList.remove('frl-is-scroll-up');
-				prevUp = false;
-			}
-			if (prevScroll === true) {
-				if (scrollActiveTid) { clearTimeout(scrollActiveTid); scrollActiveTid = 0; }
-				root.classList.remove('frl-is-scroll');
-				prevScroll = false;
-			}
-		}
-
-		// Reset inactivity timer
-		if (scrollActiveTid) {
-			clearTimeout(scrollActiveTid);
-			scrollActiveTid = 0;
-		}
-		scrollActiveTid = setTimeout(() => {
-			if (prevScroll !== false) {
-				root.classList.remove('frl-is-scroll');
-				prevScroll = false;
-				// MutationObserver handles normalization for the remove() above.
-			}
-			scrollActiveTid = 0;
-		}, STOP_DELAY);
-
-		if (!ticking) {
-			ticking = true;
-			requestAnimationFrame(apply);
-		}
-	}, { passive: true });
+		toggle.setAttribute('aria-expanded', String(!current));
+	});
 })();
