@@ -235,7 +235,7 @@ function frl_schema_generator_build_sourced( int $post_id, array $def, array $pl
 			'position' => $position,
 			'item'     => array(
 				'@id'  => trailingslashit( site_url() ),
-				'name' => get_bloginfo( 'name' ),
+				'name' => apply_filters( 'frl_schema_breadcrumb_home_label', 'Home' ),
 			),
 		);
 		++$position;
@@ -285,23 +285,6 @@ function frl_schema_generator_build_sourced( int $post_id, array $def, array $pl
 		}
 
 		return $items;
-	}
-
-	if ( $source === 'archive_posts' ) {
-		global $wp_query;
-		$items    = array();
-		$position = 1;
-		while ( have_posts() ) {
-			the_post();
-			$items[] = array(
-				'@type'    => 'ListItem',
-				'position' => $position,
-				'url'      => get_permalink(),
-			);
-			++$position;
-		}
-		rewind_posts();
-		return ! empty( $items ) ? $items : null;
 	}
 
 	if ( $source === 'site_logo' ) {

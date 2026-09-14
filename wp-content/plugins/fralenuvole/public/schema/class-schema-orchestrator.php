@@ -118,16 +118,117 @@ class Frl_Schema_Orchestrator {
 	/**
 	 * Build schemas for archive pages.
 	 *
+	 * Single feature gated by schema_collectionpage toggle.
+	 * Builds an ItemList from the current query and wraps it in a
+	 * CollectionPage with taxonomy context (DefinedTerm for
+	 * category/tag archives).
+	 *
 	 * @return array
 	 */
 	private function build_archive(): array {
-		$def = $this->load_definition( 'ItemList' );
+		$def = $this->load_definition( 'CollectionPage' );
 		if ( $def === null ) {
 			return array();
 		}
 
-		$built = $this->build_single( $def, null );
-		return $built !== null ? array( $built ) : array();
+		if ( ! empty( $def['_if'] ) && ! frl_get_option( $def['_if'] ) ) {
+			return array();
+		}
+
+		// Build ItemList inline from archive posts
+		$item_list = $this->build_archive_item_list();
+		if ( $item_list === null ) {
+			return array();
+		}
+
+		$page = $this->build_collection_page( $item_list );
+		return $page !== null ? array( $page ) : array();
+	}
+
+	/**
+	 * Build an ItemList from the current archive query.
+	 *
+	 * @return array|null ItemList schema array, or null if no posts.
+	 */
+	private function build_archive_item_list(): ?array {
+		global $wp_query;
+		$items    = array();
+		$position = 1;
+
+		while ( have_posts() ) {
+			the_post();
+			$items[] = array(
+				'@type'    => 'ListItem',
+				'position' => $position,
+				'url'      => get_permalink(),
+			);
+			++$position;
+		}
+		rewind_posts();
+
+		if ( empty( $items ) ) {
+			return null;
+		}
+
+		return array(
+			'@type'           => 'ItemList',
+			'itemListElement' => $items,
+		);
+	}
+
+	/**
+	 * Build a CollectionPage wrapping the ItemList with archive context.
+	 *
+	 * Injects dynamic properties based on archive type:
+	 * - Taxonomy archives: about → DefinedTerm with term name/URL
+	 * - Post type archives: name from post type label
+	 * - Blog index: name from page title or site name
+	 *
+	 * @param array $item_list Built ItemList schema.
+	 * @return array CollectionPage schema array.
+	 */
+	private function build_collection_page( array $item_list ): array {
+		$url   = frl_get_request_url();
+		$name  = '';
+		$about = null;
+
+		if ( is_category() || is_tag() || is_tax() ) {
+			$term = get_queried_object();
+			if ( $term instanceof \WP_Term ) {
+				$name  = $term->name;
+				$about = array(
+					'@type'            => 'DefinedTerm',
+					'name'             => $term->name,
+					'url'              => get_term_link( $term ),
+					'inDefinedTermSet' => array(
+						'@type' => 'DefinedTermSet',
+						'name'  => get_taxonomy( $term->taxonomy )->labels->name,
+					),
+				);
+			}
+		} elseif ( is_post_type_archive() ) {
+			$obj  = get_queried_object();
+			$name = $obj instanceof \WP_Post_Type ? $obj->labels->name : '';
+		} elseif ( is_home() ) {
+			$page_id = get_option( 'page_for_posts' );
+			$name    = $page_id ? get_the_title( $page_id ) : get_bloginfo( 'name' );
+		} else {
+			$name = wp_get_document_title();
+		}
+
+		$page = array(
+			'@type'      => 'CollectionPage',
+			'@id'        => $url . '#CollectionPage',
+			'url'        => $url,
+			'name'       => $name,
+			'mainEntity' => $item_list,
+		);
+
+		if ( $about !== null ) {
+			$page['about'] = $about;
+		}
+
+		return $page;
 	}
 
 	/**
@@ -226,31 +327,85 @@ class Frl_Schema_Orchestrator {
 	}
 
 	/**
-	 * Build a short hash of all schema toggle option values.
+	 * Build a short hash of all schema toggle and data option values.
 	 *
-	 * @return string Hash of current toggle states.
+	 * Combines boolean toggles (discovered from definition files) with
+	 * data-bearing org options so the global cache auto-invalidates
+	 * when any schema-related setting changes.
+	 *
+	 * @return string Hash of current toggle + data states.
 	 */
 	private function get_toggle_hash(): string {
-		$keys = array(
-			'schema_organization',
-			'schema_website',
-			'schema_webpage',
-			'schema_article',
-			'schema_breadcrumb',
-			'schema_service',
-			'schema_profilepage',
-			'schema_aboutpage',
-			'schema_contactpage',
-			'schema_howto',
-			'schema_itemlist',
-		);
+		static $hash = null;
+
+		if ( $hash !== null ) {
+			return $hash;
+		}
+
+		// Discover toggle keys from definition files
+		$toggle_keys = $this->get_schema_toggle_keys();
 
 		$values = array();
-		foreach ( $keys as $key ) {
+		foreach ( $toggle_keys as $key ) {
 			$values[ $key ] = frl_get_option( $key ) ? '1' : '0';
 		}
 
-		return md5( implode( ',', $values ) );
+		// Include data-bearing org options so cache busts on content changes
+		$data_keys = array(
+			'schema_org_sameas',
+			'schema_org_telephone',
+			'schema_org_addresscountry',
+			'schema_org_streetaddress',
+			'schema_org_addresslocality',
+			'schema_org_postalcode',
+			'schema_org_areaserved',
+			'schema_org_areaserved_sameas',
+			'schema_org_foundingdate',
+			'schema_org_foundinglocation',
+			'schema_org_foundinglocation_sameas',
+			'schema_founder_name',
+			'schema_founder_url',
+			'schema_org_availablelanguage',
+			'schema_org_knowsabout',
+			'schema_service_audiencetype',
+		);
+
+		foreach ( $data_keys as $key ) {
+			$values[ $key ] = frl_get_option( $key ) ?: '';
+		}
+
+		$hash = md5( implode( ',', $values ) );
+		return $hash;
+	}
+
+	/**
+	 * Discover all schema toggle keys from definition files.
+	 *
+	 * Scans definitions/ for _if values so new schema types
+	 * are automatically included without updating a hardcoded list.
+	 *
+	 * @return array Toggle option keys (e.g., 'schema_organization').
+	 */
+	private function get_schema_toggle_keys(): array {
+		static $keys = null;
+
+		if ( $keys !== null ) {
+			return $keys;
+		}
+
+		$keys  = array();
+		$dir   = frl_schema_get_data_file( 'Organization.php', 'definitions' );
+		$dir   = dirname( $dir );
+		$files = glob( $dir . '/*.php' ) ?: array();
+
+		foreach ( $files as $file ) {
+			$def = include $file;
+			if ( is_array( $def ) && ! empty( $def['_if'] ) ) {
+				$keys[] = $def['_if'];
+			}
+		}
+
+		return $keys;
 	}
 
 	/**

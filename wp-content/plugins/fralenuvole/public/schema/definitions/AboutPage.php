@@ -12,12 +12,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 return array(
 	'_if'              => 'schema_aboutpage',
 	'@type'            => 'AboutPage',
+	'@id'              => '{{post_permalink}}#AboutPage',
 	'url'              => '{{post_permalink}}',
 	'headline'         => '{{post_title}}',
 	'description'      => '{{post_excerpt}}',
 	'mainEntityOfPage' => array(
 		'@type' => 'WebPage',
-		'@id'   => '{{post_permalink}}',
+		'@id'   => '{{post_permalink}}#WebPage',
 	),
 	'image'            => array(
 		'@source' => 'featured_image',
