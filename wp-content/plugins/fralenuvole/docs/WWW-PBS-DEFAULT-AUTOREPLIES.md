@@ -1,25 +1,38 @@
 # PBS Default Auto-replies
 
-Content reference for PBS brand auto-reply message templates across all channels.
+Reference for PBS brand auto-reply messages across all channels.
 
 ## Webform — Inline Messages (Polylang)
 
 ### Weekday — EN
+
+```
 Thanks for getting in touch! Our consultant will contact you shortly.
+```
 
 ### Weekday — RU
+
+```
 Спасибо за обращение! Наш консультант свяжется с вами в ближайшее время.
+```
 
 ### Weekend — EN
+
+```
 Thank you for your inquiry. We will answer you on Monday.
+```
 
 ### Weekend — RU
+
+```
 Спасибо за ваш запрос. Мы ответим вам в понедельник.
+```
 
 ## Webform — HTML Emails (Polylang)
 
 ### Weekday — EN
-```html
+
+```
 Thanks for reaching out!
 
 We received your message, and one of our team members will contact you shortly.
@@ -30,7 +43,6 @@ If you prefer, you can also connect with us here:
 
 Best regards,
 PB Services Team
-
 ```
 
 ### Weekday — RU
@@ -83,28 +95,57 @@ PB Services Team
 
 ### Weekday — EN
 
-Thank you! 🟢 Your message has been received. A human representative from our team will personally contact you shortly.
+```
+Thank you! 🟢 
+
+Your message has been received. A human representative from our team will personally contact you shortly.
+```
 
 ### Weekday — RU
 
-Спасибо! 🟢 Ваше сообщение получено. Наш специалист лично свяжется с вами в ближайшее время.
+```
+Спасибо! 🟢 
+
+Ваше сообщение получено. Наш специалист лично свяжется с вами в ближайшее время.
+```
 
 ### Weekday — GE
 
-გმადლობთ! 🟢 თქვენი შეტყობინება მიღებულია. ჩვენი გუნდის წარმომადგენელი მალე პირადად დაგიკავშირდებათ.
+```
+გმადლობთ! 🟢 
+
+თქვენი შეტყობინება მიღებულია. ჩვენი გუნდის წარმომადგენელი მალე პირადად დაგიკავშირდებათ.
+```
 
 ### Weekend — EN
 
-Welcome! 🟢 We're currently outside of our office hours (Mon–Fri, 10:00–18:00 Tbilisi time). Feel free to leave your message below, and our team will follow up with you as soon as business hours resume. Thanks for reaching out!
+```
+Welcome! 🟢 
+
+We're currently outside of our office hours (Mon–Fri, 10:00–18:00 Tbilisi time). Feel free to leave your message below, and our team will follow up with you as soon as business hours resume. 
+
+Thanks for reaching out!
+```
 
 ### Weekend — RU
 
-Здравствуйте! 🟢 Сейчас мы вне рабочих часов (пн–пт, 10:00–18:00 по Тбилиси). Пожалуйста, напишите ваш вопрос или сообщение ниже, и наша команда свяжется с вами, как только начнется рабочий день. Спасибо за обращение!
+```
+Здравствуйте! 🟢 
+
+Сейчас мы вне рабочих часов (пн–пт, 10:00–18:00 по Тбилиси). Пожалуйста, напишите ваш вопрос или сообщение ниже, и наша команда свяжется с вами, как только начнется рабочий день. 
+
+Спасибо за обращение!
+```
 
 ### Weekend — GE
 
-მოგესალმებით! 🟢 ამჟამად ჩვენს სამუშაო საათებს მიღმა გვიკავშირდებით (ორშ–პარ, 10:00–18:00 თბილისის დროით). გთხოვთ, დაგვიტოვოთ თქვენი შეტყობინება ქვემოთ და ჩვენი გუნდი დაგიკავშირდებათ სამუშაო საათების განახლებისთანავე. გმადლობთ, რომ დაგვიკავშირდით!
+```
+მოგესალმებით! 🟢 
 
+ამჟამად ჩვენს სამუშაო საათებს მიღმა გვიკავშირდებით (ორშ–პარ, 10:00–18:00 თბილისის დროით). გთხოვთ, დაგვიტოვოთ თქვენი შეტყობინება ქვემოთ და ჩვენი გუნდი დაგიკავშირდებათ სამუშაო საათების განახლებისთანავე. 
+
+გმადლობთ, რომ დაგვიკავშირდით!
+```
 
 ## Telegram — Bot Messages (Sevalla messages.json)
 
