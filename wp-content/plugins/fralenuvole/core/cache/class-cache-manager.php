@@ -60,6 +60,9 @@ class Frl_Cache_Manager {
 	/** Map of groups already storage-flushed by a combined Redis scan this request. */
 	private static array $storage_batch_flushed = array();
 
+	/** Recursion depth of clear_group_with_dependencies() (cascade batching guard). */
+	private static int $cascade_depth = 0;
+
 	/** O(1) lookup maps. */
 	private static array $persistent_groups_map = array();
 	private static array $language_groups_map   = array();
@@ -806,7 +809,12 @@ class Frl_Cache_Manager {
 		} finally {
 			// Guarantee auth restoration even if the callback throws.
 			if ( $current_user_id && $auth_cookie ) {
-				wp_set_auth_cookie( $current_user_id, true );
+				// Re-issue the auth cookie ONLY if the operation actually clobbered
+				// auth state — avoids 3 redundant Set-Cookie headers on every purge.
+				$post_user = wp_get_current_user();
+				if ( (int) $post_user->ID !== (int) $current_user_id || ! wp_validate_auth_cookie( '', 'logged_in' ) ) {
+					wp_set_auth_cookie( $current_user_id, true );
+				}
 				wp_set_current_user( $current_user_id );
 			}
 		}
@@ -1161,13 +1169,21 @@ class Frl_Cache_Manager {
 	 * @return void
 	 */
 	public static function clear_browser_cache() {
-		if ( ! headers_sent() ) {
-			// Clear only cache and storage, not cookies
-			header( 'Clear-Site-Data: "cache", "storage"' );
-			header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0, private' );
-			header( 'Pragma: no-cache' );
-			header( 'Expires: Wed, 11 Jan 1984 05:00:00 GMT' );
+		// Send once per request: purge_all() triggers this for every browser
+		// group (4×), and identical headers are pure redundancy.
+		static $sent = false;
+		if ( $sent || headers_sent() ) {
+			return;
 		}
+		$sent = true;
+
+		// Clear only the HTTP cache — NOT "storage": wiping localStorage/
+		// IndexedDB/service workers punishes the admin's own browser, and
+		// Chrome blocks the redirect navigation while processing it.
+		header( 'Clear-Site-Data: "cache"' );
+		header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0, private' );
+		header( 'Pragma: no-cache' );
+		header( 'Expires: Wed, 11 Jan 1984 05:00:00 GMT' );
 	}
 
 	/**
@@ -1210,6 +1226,27 @@ class Frl_Cache_Manager {
 			'wordpress'    => 0,
 			'dependencies' => array(),
 		);
+
+		// Batch the whole dependency closure in ONE Redis scan at the top-level
+		// call; recursive cascade calls then skip storage via $storage_batch_flushed.
+		// $batched_here ensures only the call that created the batch resets the map,
+		// so batches from purge_all/purge_light/purge_groups (which call this method
+		// with $include_dependencies=false) are never reset prematurely.
+		$batched_here = false;
+		++self::$cascade_depth;
+
+		try {
+		if ( self::$cascade_depth === 1
+			&& $key === null
+			&& $include_dependencies
+			&& ! empty( self::$cache_dependencies[ $group ] )
+		) {
+			$batch_flushed = self::flush_groups_redis( self::get_dependency_closure( $group ) );
+			if ( $batch_flushed !== null ) {
+				$stats['persistent'] += $batch_flushed;
+				$batched_here       = true;
+			}
+		}
 
 		// 1. Clear persistent storage (transients or object cache)
 		if ( $key !== null ) {
@@ -1260,6 +1297,13 @@ class Frl_Cache_Manager {
 		// 4. Handle browser cache for specific groups
 		if ( $key === null && isset( self::$browser_groups_map[ $group ] ) ) {
 			self::clear_browser_cache();
+		}
+
+		} finally {
+			--self::$cascade_depth;
+			if ( $batched_here && self::$cascade_depth === 0 ) {
+				self::$storage_batch_flushed = array();
+			}
 		}
 
 		return $stats;
@@ -1336,6 +1380,29 @@ class Frl_Cache_Manager {
 	}
 
 	/**
+	 * Compute the transitive dependency closure of a group (itself included).
+	 *
+	 * @param string $group Root cache group.
+	 * @return string[] Groups in flush order (root first, dependencies after).
+	 */
+	private static function get_dependency_closure( string $group ): array {
+		$closure = array( $group => true );
+		$queue   = array( $group );
+
+		while ( ! empty( $queue ) ) {
+			$current = array_shift( $queue );
+			foreach ( self::$cache_dependencies[ $current ] ?? array() as $dependent ) {
+				if ( ! isset( $closure[ $dependent ] ) ) {
+					$closure[ $dependent ] = true;
+					$queue[]               = $dependent;
+				}
+			}
+		}
+
+		return array_keys( $closure );
+	}
+
+	/**
 	 * Flush multiple cache groups from Redis in a single keyspace scan.
 	 *
 	 * The Till Krüss-style drop-in (Kinsta) flushes each group via a Lua SCAN
@@ -1357,11 +1424,17 @@ class Frl_Cache_Manager {
 		global $wp_object_cache;
 
 		if ( empty( $groups ) || ! self::is_object_cache_truly_functional() ) {
+			frl_log( 'FRL Cache: combined Redis flush skipped — object cache not functional or no groups', array(), false );
 			return null;
 		}
 
 		$provider = self::get_provider_details();
 		if ( ! str_contains( strtolower( (string) ( $provider['slug'] ?? '' ) ), 'redis' ) ) {
+			frl_log(
+				'FRL Cache: combined Redis flush skipped — provider "{slug}" is not Redis',
+				array( 'slug' => $provider['slug'] ?? 'unknown' ),
+				false
+			);
 			return null;
 		}
 
@@ -1371,11 +1444,13 @@ class Frl_Cache_Manager {
 			|| ! method_exists( $wp_object_cache, 'redis_status' )
 			|| ! $wp_object_cache->redis_status()
 		) {
+			frl_log( 'FRL Cache: combined Redis flush skipped — drop-in lacks redis_instance/build_key/redis_status or Redis is disconnected', array(), false );
 			return null;
 		}
 
 		$redis = $wp_object_cache->redis_instance();
 		if ( ! is_object( $redis ) || ! method_exists( $redis, 'eval' ) ) {
+			frl_log( 'FRL Cache: combined Redis flush skipped — Redis client has no eval()', array(), false );
 			return null;
 		}
 
@@ -1422,7 +1497,8 @@ LUA;
 		} catch ( \Throwable $e ) {
 			frl_log(
 				'FRL Cache: combined Redis group flush failed, falling back to per-group flush: {error}',
-				array( 'error' => $e->getMessage() )
+				array( 'error' => $e->getMessage() ),
+				false
 			);
 			return null;
 		}
